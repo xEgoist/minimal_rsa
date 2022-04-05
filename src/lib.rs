@@ -1,12 +1,8 @@
-use rug::{Assign, Integer};
-use rayon::prelude::{IntoParallelIterator, ParallelIterator, ParallelString};
 use rand::prelude::*;
-use std::alloc::System;
-use std::ops::{AddAssign, MulAssign};
+use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use rug::ops::DivRounding;
+use rug::Integer;
 
-#[global_allocator]
-static A: System = System;
 
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Default)]
@@ -18,7 +14,6 @@ pub struct RSA {
     pub e: u32,
     pub d: isize,
 }
-
 
 impl RSA {
     //TODO: Fix me later
@@ -32,7 +27,10 @@ impl RSA {
         rsa.pq = rsa.p * rsa.q;
         rsa.phi = (rsa.p - 1) * (rsa.q - 1);
         rsa.find_e().unwrap();
-        println!("p = {}, q = {}\nphi={}, e= {}", rsa.p, rsa.q, rsa.phi, rsa.e);
+        println!(
+            "p = {}, q = {}\nphi={}, e= {}",
+            rsa.p, rsa.q, rsa.phi, rsa.e
+        );
         rsa.d = euclidean(rsa.e as isize, rsa.phi as isize).unwrap();
         println!("D is {}", rsa.d);
         rsa
@@ -47,7 +45,9 @@ impl RSA {
     }
     fn generate_prime_between(&self, x: u32, y: u32) -> Result<u32> {
         if x > y {
-            return Err(RSAError::EGenError("Prime  Generation error for E ".to_owned()));
+            return Err(RSAError::EGenError(
+                "Prime  Generation error for E ".to_owned(),
+            ));
         }
 
         loop {
@@ -62,20 +62,18 @@ impl RSA {
                 continue;
             }
 
-            if (3..num)
-                .into_par_iter()
-                .all(|d| num as u32 % d != 0)
-            {
+            if (3..num).into_par_iter().all(|d| num as u32 % d != 0) {
                 return Ok(num as u32);
             }
         }
     }
     pub fn encrypt(&self, input: Integer) -> Integer {
-        input.pow_mod(&Integer::from(self.e), &Integer::from(self.pq)).unwrap()
+        input
+            .pow_mod(&Integer::from(self.e), &Integer::from(self.pq))
+            .unwrap()
     }
     pub fn decrypt(&self, input: Integer) -> Integer {
-        let output = input.pow_mod(&Integer::from(self.d),
-                                   &Integer::from(self.pq));
+        let output = input.pow_mod(&Integer::from(self.d), &Integer::from(self.pq));
         //let bytes = &output.to_be_bytes()[..];
         //let string = std::str::from_utf8(bytes).unwrap()
         //    ;
@@ -91,7 +89,6 @@ pub enum RSAError {
 
 type Result<T> = std::result::Result<T, RSAError>;
 
-
 pub fn euclidean(mut lhs: isize, rhs: isize) -> Result<isize> {
     let (mut a, mut b, mut u) = (0_isize, rhs, 1);
     let cloned = lhs;
@@ -102,8 +99,11 @@ pub fn euclidean(mut lhs: isize, rhs: isize) -> Result<isize> {
     if b == 1 || b == cloned {
         return Ok(a % rhs);
     }
-    Err(RSAError::StandardEuclidean("ERROR, You Probably Didn't Supply a CoPrime Remember\
-    to call with small,big".to_owned()))
+    Err(RSAError::StandardEuclidean(
+        "ERROR, You Probably Didn't Supply a CoPrime Remember\
+    to call with small,big"
+            .to_owned(),
+    ))
 }
 
 pub fn generate_prime() -> usize {
@@ -112,10 +112,7 @@ pub fn generate_prime() -> usize {
         if num % 2 == 0 {
             continue;
         }
-        if (3..num)
-            .into_par_iter()
-            .all(|d| num % d != 0)
-        {
+        if (3..num).into_par_iter().all(|d| num % d != 0) {
             return num as usize;
         }
     }
@@ -129,7 +126,7 @@ pub fn numbify(input: &str) -> Integer {
     return num;
 }
 
-pub fn denumbify(mut input: Integer) -> String {
+pub fn denumbify(input: Integer) -> String {
     let mut v = vec![];
     let mut copy = input.clone();
     while copy != 0 {
@@ -140,11 +137,10 @@ pub fn denumbify(mut input: Integer) -> String {
     return String::from_iter(v);
 }
 
-
 #[cfg(test)]
 mod tests {
-    use rug::Complete;
     use super::*;
+    use rug::Complete;
 
     #[test]
     fn it_works() {
@@ -154,11 +150,25 @@ mod tests {
     #[test]
     fn numbification() {
         let t = "Hello World";
-        assert_eq!(numbify(t), rug::Integer::parse("212139510922239649191555332064962889369514977791303932739059812").unwrap().complete());
+        assert_eq!(
+            numbify(t),
+            rug::Integer::parse("212139510922239649191555332064962889369514977791303932739059812")
+                .unwrap()
+                .complete()
+        );
     }
 
     #[test]
     fn denumbification() {
-        assert_eq!(denumbify(rug::Integer::parse("212139510922239649191555332064962889369514977791303932739059812").unwrap().complete()), "Hello World".to_owned())
+        assert_eq!(
+            denumbify(
+                rug::Integer::parse(
+                    "212139510922239649191555332064962889369514977791303932739059812"
+                )
+                .unwrap()
+                .complete()
+            ),
+            "Hello World".to_owned()
+        )
     }
 }

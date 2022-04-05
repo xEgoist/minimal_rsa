@@ -1,14 +1,15 @@
 mod lib;
 
+use minimal_rsa::RSA;
+use minimal_rsa::{denumbify, numbify};
 use rug::Integer;
-use lib::RSA;
-
 
 fn main() {
     let _rsa = RSA::init();
-    let t = _rsa.encrypt(Integer::from(500));
+    let numbered = numbify("HE");
+    let t = _rsa.encrypt(numbered);
 
     println!("Encrypted Text: {t}");
-
-    println!("Decrypted Text: {}", _rsa.decrypt(t));
+    let decrypted = _rsa.decrypt(t);
+    println!("Decrypted Text: {}", denumbify(decrypted));
 }
