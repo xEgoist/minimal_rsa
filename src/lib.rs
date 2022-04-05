@@ -1,7 +1,9 @@
-use rug::Integer;
-use rayon::prelude::{IntoParallelIterator, ParallelIterator};
+use rug::{Assign, Integer};
+use rayon::prelude::{IntoParallelIterator, ParallelIterator, ParallelString};
 use rand::prelude::*;
 use std::alloc::System;
+use std::ops::{AddAssign, MulAssign};
+use rug::ops::DivRounding;
 
 #[global_allocator]
 static A: System = System;
@@ -119,11 +121,44 @@ pub fn generate_prime() -> usize {
     }
 }
 
+pub fn numbify(input: &str) -> Integer {
+    let mut num = Integer::from(0_u32);
+    for c in input.chars() {
+        num = (num * 0x110000) + c as u8;
+    }
+    return num;
+}
+
+pub fn denumbify(mut input: Integer) -> String {
+    let mut v = vec![];
+    let mut copy = input.clone();
+    while copy != 0 {
+        v.push((copy.mod_u(0x110000_u32)) as u8 as char);
+        copy = copy.div_floor(0x110000_i32);
+    }
+    v.reverse();
+    return String::from_iter(v);
+}
+
 
 #[cfg(test)]
 mod tests {
+    use rug::Complete;
+    use super::*;
+
     #[test]
     fn it_works() {
         assert_eq!(super::euclidean(7 as isize, 20 as isize).unwrap(), 3);
+    }
+
+    #[test]
+    fn numbification() {
+        let t = "Hello World";
+        assert_eq!(numbify(t), rug::Integer::parse("212139510922239649191555332064962889369514977791303932739059812").unwrap().complete());
+    }
+
+    #[test]
+    fn denumbification() {
+        assert_eq!(denumbify(rug::Integer::parse("212139510922239649191555332064962889369514977791303932739059812").unwrap().complete()), "Hello World".to_owned())
     }
 }
