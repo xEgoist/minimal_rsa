@@ -1,18 +1,22 @@
+use std::ops::{Mul, Rem, Sub};
 use rand::prelude::*;
-use rayon::prelude::{IntoParallelIterator, ParallelIterator};
+
+
 use rug::ops::DivRounding;
-use rug::Integer;
+use rug::{Assign, Integer};
+use rug::integer::IsPrime;
+use rug::rand::RandState;
 
 
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Default)]
 pub struct RSA {
-    pub phi: usize,
-    pub p: usize,
-    pub q: usize,
-    pub pq: usize,
-    pub e: u32,
-    pub d: isize,
+    pub phi: Integer,
+    pub p: Integer,
+    pub q: Integer,
+    pub pq: Integer,
+    pub e: Integer,
+    pub d: Integer,
 }
 
 impl RSA {
@@ -20,60 +24,52 @@ impl RSA {
     pub fn init() -> Self {
         let mut rsa = RSA::default();
         rsa.p = generate_prime();
-        rsa.q = rsa.p;
-        while rsa.q == rsa.p {
-            rsa.q = generate_prime();
+        rsa.q = rsa.p.clone();
+        while rsa.q == rsa.p && rsa.q.clone() % rsa.p.clone() == 0 {
+            rsa.q.assign(generate_prime());
         }
-        rsa.pq = rsa.p * rsa.q;
-        rsa.phi = (rsa.p - 1) * (rsa.q - 1);
-        rsa.find_e().unwrap();
+        rsa.pq.assign(rsa.p.clone().mul(rsa.q.clone()));
+        rsa.phi = (rsa.p.clone().sub(1_i32)).mul(rsa.q.clone().sub(1_i32));
+        rsa.e = rsa.generate_prime_between_phi();
         println!(
             "p = {}, q = {}\nphi={}, e= {}",
             rsa.p, rsa.q, rsa.phi, rsa.e
         );
-        rsa.d = euclidean(rsa.e as isize, rsa.phi as isize).unwrap();
+        rsa.d = rsa.e.clone().pow_mod(&Integer::from(-1), &rsa.phi).unwrap();
         println!("D is {}", rsa.d);
         rsa
     }
-    pub fn find_e(&mut self) -> Result<()> {
-        let mut temp = self.phi;
-        if self.phi > u32::MAX as usize {
-            temp = u32::MAX as usize;
-        }
-        self.e = self.generate_prime_between(3, temp as u32)?;
-        Ok(())
-    }
-    fn generate_prime_between(&self, x: u32, y: u32) -> Result<u32> {
-        if x > y {
-            return Err(RSAError::EGenError(
-                "Prime  Generation error for E ".to_owned(),
-            ));
-        }
+    //pub fn find_e(&mut self) -> Result<()> {
+    //    let mut temp = self.phi;
+    //    if self.phi > u32::MAX as usize {
+    //        temp = u32::MAX as usize;
+    //    }
+    //    self.e = self.generate_prime_between(3, temp as u32)?;
+    //    Ok(())
+    //}
+    fn generate_prime_between_phi(&self) -> Integer {
+        let mut rand = RandState::new();
+        rand.seed(&Integer::from(rand::thread_rng().gen::<u32>()));
 
         loop {
-            let num: u32 = thread_rng().gen_range(x..1_000_000);
-            if num % 2 == 0 {
+            let i = Integer::random_below(self.phi.clone(), &mut rand);
+            if i.is_probably_prime(30) == IsPrime::No {
                 continue;
             }
-            if self.phi > num as usize && self.phi % num as usize == 0 {
+            if self.phi.clone() % i.clone() == 0 {
                 continue;
             }
-            if num as usize % self.phi == 0 {
-                continue;
-            }
-
-            if (3..num).into_par_iter().all(|d| num as u32 % d != 0) {
-                return Ok(num as u32);
-            }
+            return i;
         }
     }
+
     pub fn encrypt(&self, input: Integer) -> Integer {
         input
-            .pow_mod(&Integer::from(self.e), &Integer::from(self.pq))
+            .pow_mod(&self.e.clone(), &self.pq.clone())
             .unwrap()
     }
     pub fn decrypt(&self, input: Integer) -> Integer {
-        let output = input.pow_mod(&Integer::from(self.d), &Integer::from(self.pq));
+        let output = input.pow_mod(&self.d.clone(), &self.pq.clone());
         //let bytes = &output.to_be_bytes()[..];
         //let string = std::str::from_utf8(bytes).unwrap()
         //    ;
@@ -89,33 +85,36 @@ pub enum RSAError {
 
 type Result<T> = std::result::Result<T, RSAError>;
 
-pub fn euclidean(mut lhs: isize, rhs: isize) -> Result<isize> {
-    let (mut a, mut b, mut u) = (0_isize, rhs, 1);
-    let cloned = lhs;
-    while lhs > 0 {
-        let q = (b as f64 / lhs as f64).floor() as isize;
-        (lhs, a, b, u) = (b % lhs, u, lhs, a - q * u);
+pub fn euclidean(mut lhs: Integer, rhs: Integer) -> Result<Integer> {
+    let (mut a, mut b, mut u) = (Integer::from(0_u32), rhs.clone(), Integer::from(1_u32));
+    let cloned = lhs.clone();
+    while lhs.clone() > 0 {
+        let q = b.clone().div_floor(lhs.clone());
+        println!("{b} {rhs}");
+        lhs.assign(b.clone().rem(lhs.clone()));
+        a.assign(u.clone());
+        b.assign(lhs.clone());
+        u.assign(a.clone() - q.clone() * u.clone());
     }
     if b == 1 || b == cloned {
         return Ok(a % rhs);
     }
     Err(RSAError::StandardEuclidean(
-        "ERROR, You Probably Didn't Supply a CoPrime Remember\
-    to call with small,big"
-            .to_owned(),
+        format!("ERROR, You Probably Didn't Supply a CoPrime Remember\
+    to call with small,big {b}")
+        ,
     ))
 }
 
-pub fn generate_prime() -> usize {
-    loop {
-        let num: u32 = thread_rng().gen_range(5000..u16::MAX as u32);
-        if num % 2 == 0 {
-            continue;
-        }
-        if (3..num).into_par_iter().all(|d| num % d != 0) {
-            return num as usize;
-        }
+pub fn generate_prime() -> Integer {
+    let mut rand = RandState::new();
+    rand.seed(&Integer::from(rand::thread_rng().gen::<u32>()));
+    let mut i = Integer::from(Integer::random_bits(2048, &mut rand));
+
+    while i.is_probably_prime(30) == IsPrime::No {
+        i.assign(Integer::random_bits(2048, &mut rand));
     }
+    i
 }
 
 pub fn numbify(input: &str) -> Integer {
@@ -123,18 +122,18 @@ pub fn numbify(input: &str) -> Integer {
     for c in input.chars() {
         num = (num * 0x110000) + c as u8;
     }
-    return num;
+    num
 }
 
 pub fn denumbify(input: Integer) -> String {
     let mut v = vec![];
-    let mut copy = input.clone();
+    let mut copy = input;
     while copy != 0 {
         v.push((copy.mod_u(0x110000_u32)) as u8 as char);
         copy = copy.div_floor(0x110000_i32);
     }
     v.reverse();
-    return String::from_iter(v);
+    String::from_iter(v)
 }
 
 #[cfg(test)]
@@ -165,8 +164,8 @@ mod tests {
                 rug::Integer::parse(
                     "212139510922239649191555332064962889369514977791303932739059812"
                 )
-                .unwrap()
-                .complete()
+                    .unwrap()
+                    .complete()
             ),
             "Hello World".to_owned()
         )
