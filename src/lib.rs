@@ -1,22 +1,22 @@
-use std::ops::{Mul, Rem, Sub};
+pub mod utils;
+
+use crate::utils::{pow_mod, IsPrime, Miller};
+use ibig::{ibig, IBig};
 use rand::prelude::*;
+use std::alloc::System;
 
-
-use rug::ops::DivRounding;
-use rug::{Assign, Integer};
-use rug::integer::IsPrime;
-use rug::rand::RandState;
-
+#[global_allocator]
+static A: System = System;
 
 #[allow(clippy::upper_case_acronyms)]
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct RSA {
-    pub phi: Integer,
-    pub p: Integer,
-    pub q: Integer,
-    pub pq: Integer,
-    pub e: Integer,
-    pub d: Integer,
+    pub phi: IBig,
+    pub p: IBig,
+    pub q: IBig,
+    pub pq: IBig,
+    pub e: IBig,
+    pub d: IBig,
 }
 
 impl RSA {
@@ -25,59 +25,50 @@ impl RSA {
         let mut rsa = RSA::default();
         rsa.p = generate_prime();
         rsa.q = rsa.p.clone();
-        while rsa.q == rsa.p && rsa.q.clone() % rsa.p.clone() == 0 {
-            rsa.q.assign(generate_prime());
+        while rsa.q == rsa.p && &rsa.q % &rsa.p == ibig!(0) {
+            rsa.q = generate_prime();
         }
-        rsa.pq.assign(rsa.p.clone().mul(rsa.q.clone()));
-        rsa.phi = (rsa.p.clone().sub(1_i32)).mul(rsa.q.clone().sub(1_i32));
-        rsa.e = rsa.generate_prime_between_phi();
+        rsa.pq = &rsa.p * &rsa.q.clone();
+        rsa.phi = (&rsa.p - ibig!(1)) * (&rsa.q - ibig!(1));
+        // Fermat Prime (Used in OpenSSL)
+        rsa.e = ibig!(65537);
         println!(
-            "p = {}, q = {}\nphi={}, e= {}",
+            "\np = {}\nq = {}\nphi={}\ne= {}\n",
             rsa.p, rsa.q, rsa.phi, rsa.e
         );
-        rsa.d = rsa.e.clone().pow_mod(&Integer::from(-1), &rsa.phi).unwrap();
+        rsa.d = modinv(&rsa.e, &rsa.phi).unwrap();
         println!("D is {}", rsa.d);
         rsa
     }
-    //pub fn find_e(&mut self) -> Result<()> {
-    //    let mut temp = self.phi;
-    //    if self.phi > u32::MAX as usize {
-    //        temp = u32::MAX as usize;
-    //    }
-    //    self.e = self.generate_prime_between(3, temp as u32)?;
-    //    Ok(())
-    //}
-    fn generate_prime_between_phi(&self) -> Integer {
-        let mut rand = RandState::new();
-        rand.seed(&Integer::from(rand::thread_rng().gen::<u32>()));
+
+    pub fn generate_prime_between_phi(&self) -> IBig {
+        let mut rng = thread_rng();
 
         loop {
-            let i = Integer::random_below(self.phi.clone(), &mut rand);
-            if i.is_probably_prime(30) == IsPrime::No {
+            let ret = rng.gen_range(ibig!(3)..self.phi.clone());
+            if ret.probably_prime(40) != IsPrime::Probably {
                 continue;
             }
-            if self.phi.clone() % i.clone() == 0 {
+            if &self.phi % &ret == ibig!(0) {
                 continue;
             }
-            return i;
+            return ret;
         }
     }
 
-    pub fn encrypt(&self, input: Integer) -> Integer {
-        input
-            .pow_mod(&self.e.clone(), &self.pq.clone())
-            .unwrap()
+    pub fn encrypt(&self, input: IBig) -> IBig {
+        pow_mod(input, self.e.clone(), &self.pq)
     }
-    pub fn decrypt(&self, input: Integer) -> Integer {
-        let output = input.pow_mod(&self.d.clone(), &self.pq.clone());
-        //let bytes = &output.to_be_bytes()[..];
-        //let string = std::str::from_utf8(bytes).unwrap()
-        //    ;
-        output.unwrap()
+    pub fn decrypt(&self, input: IBig) -> IBig {
+        //let dp = &self.d % (&self.p - ibig!(1));
+        //let dq = &self.d % (&self.q - ibig!(1));
+
+        //crt(dq, dp, &self.p, &self.q, input)
+        pow_mod(input, self.d.clone(), &self.pq)
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum RSAError {
     StandardEuclidean(String),
     EGenError(String),
@@ -85,52 +76,64 @@ pub enum RSAError {
 
 type Result<T> = std::result::Result<T, RSAError>;
 
-pub fn euclidean(mut lhs: Integer, rhs: Integer) -> Result<Integer> {
-    let (mut a, mut b, mut u) = (Integer::from(0_u32), rhs.clone(), Integer::from(1_u32));
-    let cloned = lhs.clone();
-    while lhs.clone() > 0 {
-        let q = b.clone().div_floor(lhs.clone());
-        println!("{b} {rhs}");
-        lhs.assign(b.clone().rem(lhs.clone()));
-        a.assign(u.clone());
-        b.assign(lhs.clone());
-        u.assign(a.clone() - q.clone() * u.clone());
+fn egcd(a: &IBig, b: &IBig) -> (IBig, IBig, IBig) {
+    if a == &ibig!(0) {
+        return (b.clone(), ibig!(0), ibig!(1));
     }
-    if b == 1 || b == cloned {
-        return Ok(a % rhs);
-    }
-    Err(RSAError::StandardEuclidean(
-        format!("ERROR, You Probably Didn't Supply a CoPrime Remember\
-    to call with small,big {b}")
-        ,
-    ))
+    let (g, y, x) = egcd(&(b % a), a);
+    (g, x - (b / a) * &y, y)
 }
 
-pub fn generate_prime() -> Integer {
-    let mut rand = RandState::new();
-    rand.seed(&Integer::from(rand::thread_rng().gen::<u32>()));
-    let mut i = Integer::from(Integer::random_bits(2048, &mut rand));
+pub fn modinv(a: &IBig, m: &IBig) -> Result<IBig> {
+    let (g, x, _y) = egcd(a, m);
 
-    while i.is_probably_prime(30) == IsPrime::No {
-        i.assign(Integer::random_bits(2048, &mut rand));
+    if g != ibig!(1) {
+        return Err(RSAError::StandardEuclidean(
+            "Something went wrong, you probably didn't supply a prime".to_owned(),
+        ));
     }
-    i
+    let mut ret = x % m;
+    if ret < ibig!(0) {
+        ret += m;
+    }
+    Ok(ret)
 }
 
-pub fn numbify(input: &str) -> Integer {
-    let mut num = Integer::from(0_u32);
+pub fn crt(dq: IBig, dp: IBig, p: &IBig, q: &IBig, c: IBig) -> IBig {
+    let m1 = pow_mod(c.clone(), dp.clone(), &p);
+    let m2 = pow_mod(c, dq, &q);
+    let qinv = modinv(&q, &p).unwrap();
+
+    return ((((m1 - &m2) * qinv) % p) * q) + &m2;
+}
+
+pub fn generate_prime() -> IBig {
+    let mut rng = thread_rng();
+    eprint!("\rGenerating Prime.");
+    loop {
+        let ret: IBig = rng.gen_range(ibig!(5000)..ibig!(2).pow(1024));
+        if ret.probably_prime(40) == IsPrime::Probably {
+            eprint!("\x1b[2K\r\n");
+            return ret;
+        }
+        eprint!(".");
+    }
+}
+
+pub fn numbify(input: &str) -> IBig {
+    let mut num = ibig!(0);
     for c in input.chars() {
         num = (num * 0x110000) + c as u8;
     }
     num
 }
 
-pub fn denumbify(input: Integer) -> String {
+pub fn denumbify(input: IBig) -> String {
     let mut v = vec![];
     let mut copy = input;
-    while copy != 0 {
-        v.push((copy.mod_u(0x110000_u32)) as u8 as char);
-        copy = copy.div_floor(0x110000_i32);
+    while copy != ibig!(0) {
+        v.push((&copy % (0x110000_u32)).to_f32() as u8 as char);
+        copy /= ibig!(0x110000);
     }
     v.reverse();
     String::from_iter(v)
@@ -139,11 +142,15 @@ pub fn denumbify(input: Integer) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rug::Complete;
+
+    #[test]
+    fn test_pow_mod_neg() {
+        assert_eq!(modinv(&ibig!(38), &ibig!(97)), Ok(ibig!(23)));
+    }
 
     #[test]
     fn it_works() {
-        assert_eq!(super::euclidean(7 as isize, 20 as isize).unwrap(), 3);
+        assert_eq!(modinv(&ibig!(7), &ibig!(20)).unwrap(), ibig!(3));
     }
 
     #[test]
@@ -151,9 +158,9 @@ mod tests {
         let t = "Hello World";
         assert_eq!(
             numbify(t),
-            rug::Integer::parse("212139510922239649191555332064962889369514977791303932739059812")
+            "212139510922239649191555332064962889369514977791303932739059812"
+                .parse::<IBig>()
                 .unwrap()
-                .complete()
         );
     }
 
@@ -161,11 +168,9 @@ mod tests {
     fn denumbification() {
         assert_eq!(
             denumbify(
-                rug::Integer::parse(
-                    "212139510922239649191555332064962889369514977791303932739059812"
-                )
+                "212139510922239649191555332064962889369514977791303932739059812"
+                    .parse::<IBig>()
                     .unwrap()
-                    .complete()
             ),
             "Hello World".to_owned()
         )

@@ -10,12 +10,12 @@ edition = "2021"
 [[bin]]
 name = "minimal_rsa"
 [dependencies]
+ibig = { version = "0.3.5", features = ["default"] }
 rand = "0.8.5"
-rayon = "1.5.1"
-rug = { version = "1.15.0", features = ["default"] }
 
 
 [profile.release]
 lto = true
 opt-level = "z"
 codegen-units = 1
+strip = true
