@@ -12,10 +12,11 @@ name = "minimal_rsa"
 [dependencies]
 ibig = { version = "0.3.5", features = ["default"] }
 rand = "0.8.5"
+rayon = "1.5.1"
 
 
 [profile.release]
 lto = true
-opt-level = "z"
+opt-level = 3
 codegen-units = 1
 strip = true
