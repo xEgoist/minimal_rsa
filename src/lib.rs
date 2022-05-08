@@ -126,23 +126,27 @@ pub fn crt(dq: UBig, dp: UBig, p: &UBig, q: &UBig, c: UBig) -> UBig {
 pub fn generate_prime() -> UBig {
     use rayon::prelude::*;
     eprint!("\rGenerating Prime.");
-    loop {
+    let veccer  = Arc::new(Mutex::new(Vec::new()));
+    (0..1000).into_par_iter().for_each(|_y: usize| {
         let ret = ubig!(0);
         let mutexed = Arc::new(Mutex::new(ret));
-        (0..2048).into_par_iter().for_each(|x| {
+        (0..1024).into_par_iter().for_each(|x| {
             let boo: bool = random();
             let mut t = mutexed.lock().unwrap();
             if boo {
                 t.set_bit(x);
             }
         });
-
-        if mutexed.lock().unwrap().probably_prime(40) == IsPrime::Probably {
-            eprint!("\x1b[2K\r\n");
-            return (*mutexed.lock().unwrap()).clone();
+       veccer.lock().unwrap().push( mutexed.lock().unwrap().clone());
+       });
+      let t =   veccer.lock().unwrap();
+        let q = t.par_iter().find_any(|&x| x.probably_prime(40) == IsPrime::Probably);
+      if let Some(ret) = q {
+        ret.clone()
         }
-        eprint!(".");
-    }
+else {
+generate_prime()
+}
 }
 
 pub fn numbify(input: &str) -> UBig {
