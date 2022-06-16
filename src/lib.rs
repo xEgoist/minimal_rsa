@@ -21,7 +21,6 @@ pub struct RSA {
 }
 
 impl RSA {
-    //TODO: Fix me later
     pub fn init() -> Self {
         let mut rsa = RSA::default();
         rsa.p = generate_prime();
@@ -150,22 +149,17 @@ generate_prime()
 }
 
 pub fn numbify(input: &str) -> UBig {
-    let mut num = ubig!(0);
-    for c in input.chars() {
-        num = (num * 0x110000) + c as u8;
-    }
-    num
+    UBig::from_str_radix(&input.as_bytes().iter().map(|x| format!("{:02x}", x)).collect::<String>(),16).unwrap()
 }
 
 pub fn denumbify(input: UBig) -> String {
-    let mut v = vec![];
-    let mut copy = input;
-    while copy != ubig!(0) {
-        v.push((&copy % (0x110000_u32)) as u8 as char);
-        copy /= ubig!(0x110000);
-    }
-    v.reverse();
-    String::from_iter(v)
+		let s =  format!("{:x}",input);
+    let t: Vec<u8> = (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
+        .collect();
+		std::str::from_utf8(&t).unwrap().to_owned()
+ // std::str::from_utf8(&hex::decode(format!("{:x}", input)).unwrap()).unwrap().to_owned()
 }
 
 #[cfg(test)]
@@ -186,23 +180,8 @@ mod tests {
     #[test]
     fn numbification() {
         let t = "Hello World";
-        assert_eq!(
-            numbify(t),
-            "212139510922239649191555332064962889369514977791303932739059812"
-                .parse::<UBig>()
-                .unwrap()
-        );
-    }
-
-    #[test]
-    fn denumbification() {
-        assert_eq!(
-            denumbify(
-                "212139510922239649191555332064962889369514977791303932739059812"
-                    .parse::<UBig>()
-                    .unwrap()
-            ),
-            "Hello World".to_owned()
-        )
+        let num = numbify(t);
+        let denum = denumbify(num);
+        assert_eq!(denum,t);
     }
 }
