@@ -3,11 +3,10 @@ pub mod utils;
 use crate::utils::{pow_mod, IsPrime, Miller};
 use ibig::{UBig, ubig};
 use rand::prelude::*;
-use std::alloc::System;
 use std::sync::{Arc, Mutex};
+use std::mem::{self, MaybeUninit};
 
-#[global_allocator]
-static A: System = System;
+
 
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Default, Clone)]
@@ -123,48 +122,77 @@ pub fn crt(dq: UBig, dp: UBig, p: &UBig, q: &UBig, c: UBig) -> UBig {
 }
 
 pub fn generate_prime() -> UBig {
+    use std::thread;
     use rayon::prelude::*;
     eprint!("\rGenerating Prime.");
-    let veccer  = Arc::new(Mutex::new(Vec::new()));
-    (0..1000).into_par_iter().for_each(|_y: usize| {
-        let ret = ubig!(0);
-        let mutexed = Arc::new(Mutex::new(ret));
-        (0..1024).into_par_iter().for_each(|x| {
-            let boo: bool = random();
-            let mut t = mutexed.lock().unwrap();
-            if boo {
-                t.set_bit(x);
+    let init: [UBig;100] = {
+    let mut data: [MaybeUninit<UBig>; 100] = unsafe
+        {
+              MaybeUninit::uninit().assume_init()
+        };
+      // Safety: UBig does not implement Copy, so we cannot do [ubig!(0);100]
+      // Therefore, we are using ptr to initialize the array with 0s
+      // Also, the size of the array is the exact same as the size of the space we are iterating through.
+      // Thus, we can safely initialize it as it would break the for loop before the safe code.
+    for elem in &mut data[..] {
+        elem.write(ubig!(0));
+    }
+    unsafe { mem::transmute::<_, [UBig; 100]>(data) }
+    };
+
+    let veccer  = Arc::new(Mutex::new(init));
+    let mut handles = vec![];
+    for i in 0..100 {
+      let cloned = Arc::clone(&veccer);
+      let handle = thread::spawn(move || {
+        let mut candy = ubig!(0);
+        let mut num = cloned.lock().unwrap();
+        for b in 0..1024{
+            let rand: bool = random();
+            if rand {
+              candy.set_bit(b);
             }
-        });
-       veccer.lock().unwrap().push( mutexed.lock().unwrap().clone());
-       });
-      let t =   veccer.lock().unwrap();
-        let q = t.par_iter().find_any(|&x| x.probably_prime(40) == IsPrime::Probably);
+        }
+      (*num)[i]=candy;
+      });
+      handles.push(handle);
+    }
+			for handle in handles {
+        handle.join().unwrap();
+				}
+
+			let t = veccer.lock().unwrap();
+    let q = t.par_iter().find_any(|&x| x.probably_prime(40) == IsPrime::Probably);
       if let Some(ret) = q {
         ret.clone()
         }
 else {
-generate_prime()
+      generate_prime()
 }
 }
 
 pub fn numbify(input: &str) -> UBig {
-    UBig::from_str_radix(&input.as_bytes().iter().map(|x| format!("{:02x}", x)).collect::<String>(),16).unwrap()
+    //UBig::from_str_radix(&input.as_bytes().iter().map(|x| format!("{:02x}", x)).collect::<String>(),16).unwrap()
+    UBig::from_le_bytes(input.as_bytes())
 }
 
 pub fn denumbify(input: UBig) -> String {
-		let s =  format!("{:x}",input);
-    let t: Vec<u8> = (0..s.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
-        .collect();
-		std::str::from_utf8(&t).unwrap().to_owned()
+//		let s = format!("{:x}",input);
+//    let t: Vec<u8> = (0..s.len())
+//        .step_by(2)
+//        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
+//        .collect();
+//		std::str::from_utf8(&t).unwrap().to_owned()
  // std::str::from_utf8(&hex::decode(format!("{:x}", input)).unwrap()).unwrap().to_owned()
+
+  // OK IDIOT, let's make this way easier.
+  std::str::from_utf8(&input.to_le_bytes()).unwrap().to_owned()
+
 }
 
 #[cfg(test)]
 mod tests {
-    use ibig::{UBig, ubig};
+    use ibig::{ubig};
     use super::*;
 
     #[test]

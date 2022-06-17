@@ -1,6 +1,7 @@
 use ibig::ubig;
 use rand::{thread_rng, Rng};
 
+
 #[derive(PartialEq, Debug)]
 pub enum IsPrime {
     Probably,
@@ -9,7 +10,10 @@ pub enum IsPrime {
 
 impl Miller for ibig::UBig {
     fn probably_prime(&self, rounds: u32) -> IsPrime {
-        if self == &ubig!(2) {
+        if self == &ubig!(0) {
+          return IsPrime::NotPrime;
+        }
+        if self <= &ubig!(5) {
             return IsPrime::Probably;
         }
         if self % ubig!(2) == ubig!(0) {
@@ -17,14 +21,14 @@ impl Miller for ibig::UBig {
         }
 
         let (mut r, mut s) = (0, self - ubig!(1));
-        while &s % ubig!(2) == ubig!(0) {
+        while &s & ubig!(1) != ubig!(0) {
             r += 1;
             s /= ubig!(2);
         }
         let mut ret = IsPrime::NotPrime;
         let mut rng = thread_rng();
-        for _ in 0..=rounds {
-            let a = rng.gen_range(ubig!(2)..=self - ubig!(1));
+        for _ in 0..rounds {
+            let a = rng.gen_range(ubig!(2)..self - ubig!(1));
             let mut x = pow_mod(a, s.clone(), self);
             if x == ubig!(1) || x == (self - ubig!(1)) || &x % self == ubig!(0) {
                 continue;
@@ -40,6 +44,7 @@ impl Miller for ibig::UBig {
                 return IsPrime::NotPrime;
             }
         }
+
         IsPrime::Probably
     }
 }
@@ -69,8 +74,6 @@ mod tests {
 
     #[test]
     fn it_works() {
-        let result = 2 + 2;
-        assert_eq!(result, 4);
         let t = ubig!(3);
         assert_eq!(IsPrime::Probably, t.probably_prime(40));
     }
