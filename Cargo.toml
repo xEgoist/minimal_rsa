@@ -10,6 +10,8 @@ edition = "2021"
 [[bin]]
 name = "minimal_rsa"
 [dependencies]
+async-recursion = "1.0.0"
+async-std = { version = "1.11.0", features = ["attributes"] }
 ibig = { version = "0.3.5", features = ["default"] }
 rand = "0.8.5"
 rayon = "1.5.1"
@@ -19,4 +21,4 @@ rayon = "1.5.1"
 lto = true
 opt-level = 3
 codegen-units = 1
-strip = true
+debug = true

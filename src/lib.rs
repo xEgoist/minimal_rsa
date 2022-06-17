@@ -5,7 +5,7 @@ use ibig::{UBig, ubig};
 use rand::prelude::*;
 use std::sync::{Arc, Mutex};
 use std::mem::{self, MaybeUninit};
-
+use async_recursion::async_recursion;
 
 
 #[allow(clippy::upper_case_acronyms)]
@@ -20,23 +20,23 @@ pub struct RSA {
 }
 
 impl RSA {
-    pub fn init() -> Self {
+    pub async fn init() -> Self {
         let mut rsa = RSA::default();
-        rsa.p = generate_prime();
+        rsa.p = generate_prime().await;
         rsa.q = rsa.p.clone();
         while rsa.q == rsa.p && &rsa.q % &rsa.p == ubig!(0) {
-            rsa.q = generate_prime();
+            rsa.q = generate_prime().await;
         }
         rsa.pq = &rsa.p * &rsa.q.clone();
         rsa.phi = (&rsa.p - ubig!(1)) * (&rsa.q - ubig!(1));
         // Fermat Prime (Used in OpenSSL)
         rsa.e = ubig!(65537);
-        println!(
-            "\np = {}\nq = {}\nphi={}\ne= {}\n",
-            rsa.p, rsa.q, rsa.phi, rsa.e
-        );
+      //  println!(
+      //      "\np = {}\nq = {}\nphi={}\ne= {}\n",
+      //      rsa.p, rsa.q, rsa.phi, rsa.e
+      //  );
         rsa.d = modinv(&rsa.e, &rsa.phi).unwrap();
-        println!("D is {}", rsa.d);
+      //  println!("D is {}", rsa.d);
         rsa
     }
 
@@ -121,12 +121,15 @@ pub fn crt(dq: UBig, dp: UBig, p: &UBig, q: &UBig, c: UBig) -> UBig {
     ((((m1 - &m2) * qinv) % p) * q) + &m2
 }
 
-pub fn generate_prime() -> UBig {
+
+#[async_recursion(?Send)]
+#[inline(always)]
+pub async fn generate_prime() -> UBig {
     use std::thread;
     use rayon::prelude::*;
-    eprint!("\rGenerating Prime.");
-    let init: [UBig;100] = {
-    let mut data: [MaybeUninit<UBig>; 100] = unsafe
+    //eprint!("\rGenerating Prime.");
+    let init: [UBig;1000] = {
+    let mut data: [MaybeUninit<UBig>; 1000] = unsafe
         {
               MaybeUninit::uninit().assume_init()
         };
@@ -137,17 +140,17 @@ pub fn generate_prime() -> UBig {
     for elem in &mut data[..] {
         elem.write(ubig!(0));
     }
-    unsafe { mem::transmute::<_, [UBig; 100]>(data) }
+    unsafe { mem::transmute::<_, [UBig; 1000]>(data) }
     };
 
     let veccer  = Arc::new(Mutex::new(init));
     let mut handles = vec![];
-    for i in 0..100 {
+    for i in 0..1000 {
       let cloned = Arc::clone(&veccer);
       let handle = thread::spawn(move || {
         let mut candy = ubig!(0);
         let mut num = cloned.lock().unwrap();
-        for b in 0..1024{
+        for b in 0..2048{
             let rand: bool = random();
             if rand {
               candy.set_bit(b);
@@ -167,7 +170,7 @@ pub fn generate_prime() -> UBig {
         ret.clone()
         }
 else {
-      generate_prime()
+      generate_prime().await
 }
 }
 
