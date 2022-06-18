@@ -1,14 +1,13 @@
 pub mod utils;
 
 use crate::utils::{pow_mod, IsPrime, Miller};
-use ibig::{UBig, ubig};
-use std::sync::{Arc, Mutex};
-use std::mem::{self, MaybeUninit};
 use async_recursion::async_recursion;
-use rand_chacha::ChaCha20Rng;
-use rand::SeedableRng;
+use ibig::{ubig, UBig};
 use rand::Rng;
-
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
+use std::mem::{self, MaybeUninit};
+use std::sync::{Arc, Mutex};
 
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Default, Clone)]
@@ -33,12 +32,12 @@ impl RSA {
         rsa.phi = (&rsa.p - ubig!(1)) * (&rsa.q - ubig!(1));
         // Fermat Prime (Used in OpenSSL)
         rsa.e = ubig!(65537);
-      //  println!(
-      //      "\np = {}\nq = {}\nphi={}\ne= {}\n",
-      //      rsa.p, rsa.q, rsa.phi, rsa.e
-      //  );
+        //  println!(
+        //      "\np = {}\nq = {}\nphi={}\ne= {}\n",
+        //      rsa.p, rsa.q, rsa.phi, rsa.e
+        //  );
         rsa.d = modinv(&rsa.e, &rsa.phi).unwrap();
-      //  println!("D is {}", rsa.d);
+        //  println!("D is {}", rsa.d);
         rsa
     }
 
@@ -76,14 +75,6 @@ pub enum RSAError {
 }
 
 type Result<T> = std::result::Result<T, RSAError>;
-
-fn egcd(a: &UBig, b: &UBig) -> (UBig, UBig, UBig) {
-    if a == &ubig!(0) {
-        return (b.clone(), ubig!(0), ubig!(1));
-    }
-    let (g, y, x) = egcd(&(b % a), a);
-    (g, x + (b / a) * &y, y)
-}
 
 pub fn modinv(a: &UBig, m: &UBig) -> Result<UBig> {
     let mut iter = 1;
@@ -123,58 +114,55 @@ pub fn crt(dq: UBig, dp: UBig, p: &UBig, q: &UBig, c: UBig) -> UBig {
     ((((m1 - &m2) * qinv) % p) * q) + &m2
 }
 
-
 #[async_recursion(?Send)]
 #[inline(always)]
 pub async fn generate_prime() -> UBig {
-    use std::thread;
     use rayon::prelude::*;
+    use std::thread;
     //eprint!("\rGenerating Prime.");
-    let init: [UBig;1000] = {
-    let mut data: [MaybeUninit<UBig>; 1000] = unsafe
-        {
-              MaybeUninit::uninit().assume_init()
-        };
-      // Safety: UBig does not implement Copy, so we cannot do [ubig!(0);100]
-      // Therefore, we are using ptr to initialize the array with 0s
-      // Also, the size of the array is the exact same as the size of the space we are iterating through.
-      // Thus, we can safely initialize it as it would break the for loop before the safe code.
-    for elem in &mut data[..] {
-        elem.write(ubig!(0));
-    }
-    unsafe { mem::transmute::<_, [UBig; 1000]>(data) }
+    let init: [UBig; 1000] = {
+        let mut data: [MaybeUninit<UBig>; 1000] = unsafe { MaybeUninit::uninit().assume_init() };
+        // Safety: UBig does not implement Copy, so we cannot do [ubig!(0);100]
+        // Therefore, we are using ptr to initialize the array with 0s
+        // Also, the size of the array is the exact same as the size of the space we are iterating through.
+        // Thus, we can safely initialize it as it would break the for loop before the safe code.
+        for elem in &mut data[..] {
+            elem.write(ubig!(0));
+        }
+        unsafe { mem::transmute::<_, [UBig; 1000]>(data) }
     };
 
-    let veccer  = Arc::new(Mutex::new(init));
+    let veccer = Arc::new(Mutex::new(init));
     let mut handles = vec![];
     for i in 0..1000 {
-      let cloned = Arc::clone(&veccer);
-      let handle = thread::spawn(move || {
-        let mut candy = ubig!(0);
-        let mut num = cloned.lock().unwrap();
-        let mut rng = ChaCha20Rng::from_entropy();
-        for b in 0..1024{
-            let rand: bool = rng.gen();
-            if rand {
-              candy.set_bit(b);
+        let cloned = Arc::clone(&veccer);
+        let handle = thread::spawn(move || {
+            let mut candy = ubig!(0);
+            let mut num = cloned.lock().unwrap();
+            let mut rng = ChaCha20Rng::from_entropy();
+            for b in 0..1024 {
+                let rand: bool = rng.gen();
+                if rand {
+                    candy.set_bit(b);
+                }
             }
-        }
-      (*num)[i]=candy;
-      });
-      handles.push(handle);
+            (*num)[i] = candy;
+        });
+        handles.push(handle);
     }
-			for handle in handles {
+    for handle in handles {
         handle.join().unwrap();
-				}
+    }
 
-			let t = veccer.lock().unwrap();
-    let q = t.par_iter().find_any(|&x| x.probably_prime(40) == IsPrime::Probably);
-      if let Some(ret) = q {
+    let t = veccer.lock().unwrap();
+    let q = t
+        .par_iter()
+        .find_any(|&x| x.probably_prime(40) == IsPrime::Probably);
+    if let Some(ret) = q {
         ret.clone()
-        }
-else {
-      generate_prime().await
-}
+    } else {
+        generate_prime().await
+    }
 }
 
 pub fn numbify(input: &str) -> UBig {
@@ -183,23 +171,24 @@ pub fn numbify(input: &str) -> UBig {
 }
 
 pub fn denumbify(input: UBig) -> String {
-//		let s = format!("{:x}",input);
-//    let t: Vec<u8> = (0..s.len())
-//        .step_by(2)
-//        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
-//        .collect();
-//		std::str::from_utf8(&t).unwrap().to_owned()
- // std::str::from_utf8(&hex::decode(format!("{:x}", input)).unwrap()).unwrap().to_owned()
+    //		let s = format!("{:x}",input);
+    //    let t: Vec<u8> = (0..s.len())
+    //        .step_by(2)
+    //        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
+    //        .collect();
+    //		std::str::from_utf8(&t).unwrap().to_owned()
+    // std::str::from_utf8(&hex::decode(format!("{:x}", input)).unwrap()).unwrap().to_owned()
 
-  // OK IDIOT, let's make this way easier.
-  std::str::from_utf8(&input.to_le_bytes()).unwrap().to_owned()
-
+    // OK IDIOT, let's make this way easier.
+    std::str::from_utf8(&input.to_le_bytes())
+        .unwrap()
+        .to_owned()
 }
 
 #[cfg(test)]
 mod tests {
-    use ibig::{ubig};
     use super::*;
+    use ibig::ubig;
 
     #[test]
     fn test_pow_mod_neg() {
@@ -216,6 +205,6 @@ mod tests {
         let t = "Hello World";
         let num = numbify(t);
         let denum = denumbify(num);
-        assert_eq!(denum,t);
+        assert_eq!(denum, t);
     }
 }

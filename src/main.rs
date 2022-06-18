@@ -9,8 +9,7 @@ async fn main() {
     let mut input = String::new();
     io::stdin().read_line(&mut input).await.unwrap();
     input = input.trim().trim_matches('\0').to_owned();
-    let numbered =
-        numbify(&input);
+    let numbered = numbify(&input);
     let t = _rsa.encrypt(numbered);
 
     println!("Encrypted Text: {t}");

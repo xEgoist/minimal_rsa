@@ -1,7 +1,6 @@
 use ibig::ubig;
 use rand::{thread_rng, Rng};
 
-
 #[derive(PartialEq, Debug)]
 pub enum IsPrime {
     Probably,
@@ -11,7 +10,7 @@ pub enum IsPrime {
 impl Miller for ibig::UBig {
     fn probably_prime(&self, rounds: u32) -> IsPrime {
         if self == &ubig!(0) {
-          return IsPrime::NotPrime;
+            return IsPrime::NotPrime;
         }
         if self <= &ubig!(5) {
             return IsPrime::Probably;
@@ -70,7 +69,7 @@ pub fn pow_mod(mut b: ibig::UBig, mut e: ibig::UBig, m: &ibig::UBig) -> ibig::UB
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ibig::{UBig};
+    use ibig::UBig;
 
     #[test]
     fn it_works() {
