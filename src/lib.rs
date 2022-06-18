@@ -2,10 +2,12 @@ pub mod utils;
 
 use crate::utils::{pow_mod, IsPrime, Miller};
 use ibig::{UBig, ubig};
-use rand::prelude::*;
 use std::sync::{Arc, Mutex};
 use std::mem::{self, MaybeUninit};
 use async_recursion::async_recursion;
+use rand_chacha::ChaCha20Rng;
+use rand::SeedableRng;
+use rand::Rng;
 
 
 #[allow(clippy::upper_case_acronyms)]
@@ -41,7 +43,7 @@ impl RSA {
     }
 
     pub fn generate_prime_between_phi(&self) -> UBig {
-        let mut rng = thread_rng();
+        let mut rng = ChaCha20Rng::from_entropy();
 
         loop {
             let ret = rng.gen_range(ubig!(3)..self.phi.clone());
@@ -150,8 +152,9 @@ pub async fn generate_prime() -> UBig {
       let handle = thread::spawn(move || {
         let mut candy = ubig!(0);
         let mut num = cloned.lock().unwrap();
-        for b in 0..2048{
-            let rand: bool = random();
+        let mut rng = ChaCha20Rng::from_entropy();
+        for b in 0..1024{
+            let rand: bool = rng.gen();
             if rand {
               candy.set_bit(b);
             }

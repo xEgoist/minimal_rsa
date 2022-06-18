@@ -1,5 +1,7 @@
 use honggfuzz::fuzz;
 use minimal_rsa::*;
+use async_std::task;
+
 fn main() {
     // Here you can parse `std::env::args and
     // setup / initialize your project
@@ -14,7 +16,7 @@ fn main() {
         // Here, this slice will contain a "random" quantity of "random" data.
         fuzz!(|data: &[u8]| {
 				if let Ok(data) = std::str::from_utf8(data) {
-            let _rsa = RSA::init();
+            let _rsa = task::block_on(RSA::init());
             let data = data.trim_matches('\0');
             let numbered = numbify(data);
             let t = _rsa.encrypt(numbered);
