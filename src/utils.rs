@@ -52,18 +52,38 @@ pub trait Miller {
     fn probably_prime(&self, rounds: u32) -> IsPrime;
 }
 
-pub fn pow_mod(mut b: ibig::UBig, mut e: ibig::UBig, m: &ibig::UBig) -> ibig::UBig {
-    let mut num = ubig!(1);
-    b = &b % m;
-
-    while e > ubig!(0) {
-        if &e & ubig!(1) != ubig!(0) {
-            num = (num * &b) % m;
-        }
-        e >>= 1;
-        b = &b * &b % m;
+pub fn pow_mod(b: ibig::UBig, e: ibig::UBig, m: &ibig::UBig) -> ibig::UBig {
+    if e == ubig!(0) {
+      return ubig!(1);
     }
-    num
+    let mut ret = b.clone();
+    let bits = e.bit_len() - 1;
+
+    for bit in (0..bits).rev() {
+     ret = ret.pow(2);
+      ret %= m;
+      if e.bit(bit) {
+        ret *= &b;
+        ret %= m;
+      }
+    }
+    ret
+}
+
+pub fn recursive_mod_pow(b: &ibig::UBig, e: &ibig::UBig, m: &ibig::UBig) -> ibig::UBig {
+    if *e == ubig!(0){
+      return ubig!(1);
+    }
+    let tmp = recursive_mod_pow(b, &(e >>1), m) % m;
+    if e % ubig!(2) == ubig!(0) {
+      (&tmp * &tmp) % m
+    }
+    else if *e > ubig!(0) {
+       (b * &tmp * &tmp) % m
+     }
+     else {
+    ((&tmp * &tmp) / b) % m
+     }
 }
 
 #[cfg(test)]
@@ -79,12 +99,22 @@ mod tests {
 
     #[test]
     fn test_pow_mod_1() {
-        assert_eq!(ubig!(2), pow_mod(ubig!(5), ubig!(3), &ubig!(3)));
+        assert_eq!(ubig!(2), recursive_mod_pow(&ubig!(5), &ubig!(3), &ubig!(3)));
     }
 
     #[test]
     fn test_pow_mod_2() {
-        assert_eq!(ubig!(25), pow_mod(ubig!(5), ubig!(150), &ubig!(60)));
+        let b = ubig!(5);
+        let e =  ubig!(150);
+        let m = ubig!(60);
+        assert_eq!(ubig!(25), pow_mod(b.clone(), e.clone(), &m));
+        assert_eq!(ubig!(25), recursive_mod_pow(&b, &e, &m));
+    }
+
+    #[test]
+    fn test_pow_mod_e0() {
+        assert_eq!(ubig!(1), pow_mod(ubig!(5), ubig!(0), &ubig!(60)));
+        assert_eq!(ubig!(1), recursive_mod_pow(&ubig!(5), &ubig!(0), &ubig!(60)));
     }
 
     #[test]

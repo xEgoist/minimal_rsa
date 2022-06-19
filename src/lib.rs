@@ -134,13 +134,14 @@ pub async fn generate_prime() -> UBig {
 
     let veccer = Arc::new(Mutex::new(init));
     let mut handles = vec![];
+
     for i in 0..1000 {
         let cloned = Arc::clone(&veccer);
         let handle = thread::spawn(move || {
+            let mut rng = ChaCha20Rng::from_entropy();
             let mut candy = ubig!(0);
             let mut num = cloned.lock().unwrap();
-            let mut rng = ChaCha20Rng::from_entropy();
-            for b in 0..1024 {
+            for b in 0..2048 {
                 let rand: bool = rng.gen();
                 if rand {
                     candy.set_bit(b);
@@ -153,16 +154,17 @@ pub async fn generate_prime() -> UBig {
     for handle in handles {
         handle.join().unwrap();
     }
-
+      {
     let t = veccer.lock().unwrap();
     let q = t
         .par_iter()
         .find_any(|&x| x.probably_prime(40) == IsPrime::Probably);
+        
     if let Some(ret) = q {
-        ret.clone()
-    } else {
-        generate_prime().await
+       return ret.clone();
     }
+   }
+      generate_prime().await
 }
 
 pub fn numbify(input: &str) -> UBig {
