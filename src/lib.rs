@@ -232,7 +232,9 @@ mod tests {
     #[test]
     fn bcrypt_gen() {
         let mut arr: [u8; 5] = [0; 5];
-        let _ = BCryptGenRandom(ptr::null_mut(), arr.to_mut_ptr(), arr.len(), 0x00000002);
+        unsafe {
+        let _ = BCryptGenRandom(ptr::null_mut(), arr.as_mut_ptr(), arr.len() as u32, 0x00000002);
+        }
         eprintln!("{arr:?}");
     }
 }
