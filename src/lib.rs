@@ -149,7 +149,7 @@ pub async fn generate_prime() -> UBig {
         let handle = thread::spawn(move || {
             let mut buf: [u8;256] = [0;256];
             #[cfg(target_os = "windows")]
-            let _ = BCryptGenRandom(ptr::null_mut(),buf.as_mut_ptr(), buf.len() as u64, 0x00000002 );
+            let _ = BCryptGenRandom(ptr::null_mut(),buf.as_mut_ptr(), buf.len() as u32, 0x00000002 );
             #[cfg(not(target_os = "windows"))]
             {
               let mut fd = File::open("/dev/urandom").unwrap();
