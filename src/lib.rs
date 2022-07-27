@@ -1,20 +1,18 @@
 pub mod utils;
 
-#[cfg(not(target_os = "windows"))]
-use std::fs::File;
 use crate::utils::{pow_mod, IsPrime, Miller};
 use async_recursion::async_recursion;
-use ibig::{ubig, UBig};
-use std::mem::{self, MaybeUninit};
-use std::sync::{Arc, Mutex};
-#[cfg(not(target_os = "windows"))]
-use std::io::Read;
 #[cfg(target_os = "windows")]
 use core::ffi::{c_long, c_ulong, c_void};
+use ibig::{ubig, UBig};
+#[cfg(not(target_os = "windows"))]
+use std::fs::File;
+#[cfg(not(target_os = "windows"))]
+use std::io::Read;
+use std::mem::{self, MaybeUninit};
 #[cfg(target_os = "windows")]
 use std::ptr;
-
-
+use std::sync::{Arc, Mutex};
 
 #[cfg(target_os = "windows")]
 type NTSTATUS = c_long;
@@ -25,15 +23,13 @@ type ULONG = c_ulong;
 #[link(name = "bcrypt")]
 #[cfg(target_os = "windows")]
 extern "system" {
-	pub fn BCryptGenRandom(
+    pub fn BCryptGenRandom(
         hAlgorithm: LPVOID,
         pBuffer: *mut u8,
         cbBuffer: ULONG,
         dwFlags: ULONG,
     ) -> NTSTATUS;
 }
-
-
 
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Default, Clone)]
@@ -66,7 +62,6 @@ impl RSA {
         //  println!("D is {}", rsa.d);
         rsa
     }
-
 
     pub fn encrypt(&self, input: UBig) -> UBig {
         pow_mod(input, self.e.clone(), &self.pq)
@@ -150,20 +145,25 @@ pub async fn generate_prime() -> UBig {
     for i in 0..100 {
         let cloned = Arc::clone(&veccer);
         let handle = thread::spawn(move || {
-            let mut buf: [u8;256] = [0;256];
+            let mut buf: [u8; 256] = [0; 256];
             #[cfg(target_os = "windows")]
             unsafe {
-            let _ = BCryptGenRandom(ptr::null_mut(),buf.as_mut_ptr(), buf.len() as u32, 0x00000002 );
+                let _ = BCryptGenRandom(
+                    ptr::null_mut(),
+                    buf.as_mut_ptr(),
+                    buf.len() as u32,
+                    0x00000002,
+                );
             }
             #[cfg(not(target_os = "windows"))]
             {
-              let mut fd = File::open("/dev/urandom").unwrap();
-              fd.read_exact(&mut buf).unwrap();
+                let mut fd = File::open("/dev/urandom").unwrap();
+                fd.read_exact(&mut buf).unwrap();
             }
             let mut num = cloned.lock().unwrap();
             let mut candy = UBig::from_le_bytes(&buf);
             if &candy % ubig!(2) == ubig!(0) {
-              candy += ubig!(1);
+                candy += ubig!(1);
             }
             (*num)[i] = candy;
         });
@@ -172,17 +172,17 @@ pub async fn generate_prime() -> UBig {
     for handle in handles {
         handle.join().unwrap();
     }
-      {
-    let t = veccer.lock().unwrap();
-    let q = t
-        .par_iter()
-        .find_any(|&x| x.probably_prime(40) == IsPrime::Probably);
+    {
+        let t = veccer.lock().unwrap();
+        let q = t
+            .par_iter()
+            .find_any(|&x| x.probably_prime(40) == IsPrime::Probably);
 
-    if let Some(ret) = q {
-       return ret.clone();
+        if let Some(ret) = q {
+            return ret.clone();
+        }
     }
-   }
-      generate_prime().await
+    generate_prime().await
 }
 
 #[inline(always)]
@@ -231,8 +231,8 @@ mod tests {
     #[cfg(target_os = "windows")]
     #[test]
     fn bcrypt_gen() {
-      let mut arr: [u8;5] = [0;5];
-      let _ = BCryptGenRandom(ptr::null_mut(),arr.to_mut_ptr(), arr.len(), 0x00000002 );
-      eprintln!("{arr:?}");
+        let mut arr: [u8; 5] = [0; 5];
+        let _ = BCryptGenRandom(ptr::null_mut(), arr.to_mut_ptr(), arr.len(), 0x00000002);
+        eprintln!("{arr:?}");
     }
 }
