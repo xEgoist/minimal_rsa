@@ -1,13 +1,36 @@
 pub mod utils;
-
+use std::fs::File;
 use crate::utils::{pow_mod, IsPrime, Miller};
 use async_recursion::async_recursion;
 use ibig::{ubig, UBig};
-use rand::Rng;
-use rand::SeedableRng;
-use rand_chacha::ChaCha20Rng;
 use std::mem::{self, MaybeUninit};
 use std::sync::{Arc, Mutex};
+use std::io::Read;
+#[cfg(target_os = "windows")]
+use core::ffi::{c_long, c_ulong, c_void};
+#[cfg(target_os = "windows")]
+use std::ptr;
+
+
+
+#[cfg(target_os = "windows")]
+type NTSTATUS = c_long;
+#[cfg(target_os = "windows")]
+type LPVOID = *mut c_void;
+#[cfg(target_os = "windows")]
+type ULONG = c_ulong;
+#[link(name = "bcrypt")]
+#[cfg(target_os = "windows")]
+extern "system" {
+	pub fn BCryptGenRandom(
+        hAlgorithm: LPVOID,
+        pBuffer: *mut u8,
+        cbBuffer: ULONG,
+        dwFlags: ULONG,
+    ) -> NTSTATUS;
+}
+
+
 
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Default, Clone)]
@@ -41,20 +64,6 @@ impl RSA {
         rsa
     }
 
-    pub fn generate_prime_between_phi(&self) -> UBig {
-        let mut rng = ChaCha20Rng::from_entropy();
-
-        loop {
-            let ret = rng.gen_range(ubig!(3)..self.phi.clone());
-            if ret.probably_prime(40) != IsPrime::Probably {
-                continue;
-            }
-            if &self.phi % &ret == ubig!(0) {
-                continue;
-            }
-            return ret;
-        }
-    }
 
     pub fn encrypt(&self, input: UBig) -> UBig {
         pow_mod(input, self.e.clone(), &self.pq)
@@ -68,7 +77,7 @@ impl RSA {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum RSAError {
     StandardEuclidean(String),
     EGenError(String),
@@ -120,8 +129,8 @@ pub async fn generate_prime() -> UBig {
     use rayon::prelude::*;
     use std::thread;
     //eprint!("\rGenerating Prime.");
-    let init: [UBig; 1000] = {
-        let mut data: [MaybeUninit<UBig>; 1000] = unsafe { MaybeUninit::uninit().assume_init() };
+    let init: [UBig; 100] = {
+        let mut data: [MaybeUninit<UBig>; 100] = unsafe { MaybeUninit::uninit().assume_init() };
         // Safety: UBig does not implement Copy, so we cannot do [ubig!(0);100]
         // Therefore, we are using ptr to initialize the array with 0s
         // Also, the size of the array is the exact same as the size of the space we are iterating through.
@@ -129,23 +138,27 @@ pub async fn generate_prime() -> UBig {
         for elem in &mut data[..] {
             elem.write(ubig!(0));
         }
-        unsafe { mem::transmute::<_, [UBig; 1000]>(data) }
+        unsafe { mem::transmute::<_, [UBig; 100]>(data) }
     };
 
     let veccer = Arc::new(Mutex::new(init));
     let mut handles = vec![];
 
-    for i in 0..1000 {
+    for i in 0..100 {
         let cloned = Arc::clone(&veccer);
         let handle = thread::spawn(move || {
-            let mut rng = ChaCha20Rng::from_entropy();
-            let mut candy = ubig!(0);
+            let mut buf: [u8;256] = [0;256];
+            #[cfg(target_os = "windows")]
+            let _ = BCryptGenRandom(ptr::null_mut(),buf.as_mut_ptr(), buf.len() as u64, 0x00000002 );
+            #[cfg(not(target_os = "windows"))]
+            {
+              let mut fd = File::open("/dev/urandom").unwrap();
+              fd.read_exact(&mut buf).unwrap();
+            }
             let mut num = cloned.lock().unwrap();
-            for b in 0..2048 {
-                let rand: bool = rng.gen();
-                if rand {
-                    candy.set_bit(b);
-                }
+            let mut candy = UBig::from_le_bytes(&buf);
+            if &candy % ubig!(2) == ubig!(0) {
+              candy += ubig!(1);
             }
             (*num)[i] = candy;
         });
@@ -159,7 +172,7 @@ pub async fn generate_prime() -> UBig {
     let q = t
         .par_iter()
         .find_any(|&x| x.probably_prime(40) == IsPrime::Probably);
-        
+
     if let Some(ret) = q {
        return ret.clone();
     }
@@ -167,6 +180,7 @@ pub async fn generate_prime() -> UBig {
       generate_prime().await
 }
 
+#[inline(always)]
 pub fn numbify(input: &str) -> UBig {
     //UBig::from_str_radix(&input.as_bytes().iter().map(|x| format!("{:02x}", x)).collect::<String>(),16).unwrap()
     UBig::from_le_bytes(input.as_bytes())
@@ -208,5 +222,12 @@ mod tests {
         let num = numbify(t);
         let denum = denumbify(num);
         assert_eq!(denum, t);
+    }
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn bcrypt_gen() {
+      let mut arr: [u8;5] = [0;5];
+      let _ = BCryptGenRandom(ptr::null_mut(),arr.to_mut_ptr(), arr.len(), 0x00000002 );
+      eprintln!("{arr:?}");
     }
 }
