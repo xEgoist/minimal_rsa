@@ -1,10 +1,13 @@
 pub mod utils;
+
+#[cfg(not(target_os = "windows"))]
 use std::fs::File;
 use crate::utils::{pow_mod, IsPrime, Miller};
 use async_recursion::async_recursion;
 use ibig::{ubig, UBig};
 use std::mem::{self, MaybeUninit};
 use std::sync::{Arc, Mutex};
+#[cfg(not(target_os = "windows"))]
 use std::io::Read;
 #[cfg(target_os = "windows")]
 use core::ffi::{c_long, c_ulong, c_void};
@@ -149,7 +152,9 @@ pub async fn generate_prime() -> UBig {
         let handle = thread::spawn(move || {
             let mut buf: [u8;256] = [0;256];
             #[cfg(target_os = "windows")]
+            unsafe {
             let _ = BCryptGenRandom(ptr::null_mut(),buf.as_mut_ptr(), buf.len() as u32, 0x00000002 );
+            }
             #[cfg(not(target_os = "windows"))]
             {
               let mut fd = File::open("/dev/urandom").unwrap();
